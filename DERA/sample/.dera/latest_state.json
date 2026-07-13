@@ -1,0 +1,59 @@
+{
+  "algorithmId": "datalab",
+  "projectName": "sample",
+  "parameters": {
+    "algorithmId": "datalab",
+    "dataset": {
+      "hasTarget": "Yes",
+      "targetColumn": "target",
+      "filePath": "data/swiggy_customer_data.csv",
+      "excludedColumns": []
+    },
+    "trainTestSplit": {
+      "testSize": 0.2,
+      "randomState": 48,
+      "shuffle": true,
+      "useAdvanced": false
+    },
+    "modelParams": {}
+  },
+  "datasetPath": "data/swiggy_customer_data.csv",
+  "targetColumn": "target",
+  "metrics": null,
+  "activeRunId": null,
+  "activeView": "data-lab",
+  "activeViewMode": "data",
+  "dataLabSession": {
+    "sessionId": "dataset_r2x1ztn7v_1783915596235",
+    "rawDatasetPath": "data/swiggy_customer_data.csv",
+    "processedDatasetPath": "",
+    "columns": [],
+    "metadata": {
+      "totalRows": 500,
+      "totalCols": 9,
+      "missingCounts": {
+        "customer_id": 0,
+        "age": 0,
+        "city": 0,
+        "orders_last_30_days": 0,
+        "avg_order_value": 0,
+        "days_since_last_order": 0,
+        "coupon_used_last_month": 0,
+        "customer_support_calls": 0,
+        "churn": 0
+      },
+      "dtypes": {
+        "customer_id": "Int64",
+        "age": "Int64",
+        "city": "String",
+        "orders_last_30_days": "Int64",
+        "avg_order_value": "Int64",
+        "days_since_last_order": "Int64",
+        "coupon_used_last_month": "Int64",
+        "customer_support_calls": "Int64",
+        "churn": "Int64"
+      }
+    },
+    "createdAt": "2026-07-13T04:06:36Z"
+  }
+}

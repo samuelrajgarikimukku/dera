@@ -1,22 +1,21 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { FolderPlus, AlertCircle, X } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { FolderPlus, AlertCircle, X, FileText, Upload } from 'lucide-react';
 
 /**
- * Modern modal component to collect project/folder name.
- * Performs rigorous frontend input validation.
+ * Modern modal component to collect project/folder name and dataset file.
+ * Performs rigorous input and file type validation.
  */
 export default function ProjectModal({ algorithm, isOpen, onClose, onCreate, existingProjectNames }) {
   const [projectName, setProjectName] = useState('');
   const [error, setError] = useState('');
   const [isTouched, setIsTouched] = useState(false);
+  const [file, setFile] = useState(null);
+  const [fileError, setFileError] = useState('');
   const inputRef = useRef(null);
 
   // Focus input automatically on open
   useEffect(() => {
     if (isOpen) {
-      setProjectName('');
-      setError('');
-      setIsTouched(false);
       setTimeout(() => inputRef.current?.focus(), 100);
     }
   }, [isOpen]);
@@ -47,6 +46,18 @@ export default function ProjectModal({ algorithm, isOpen, onClose, onCreate, exi
     return '';
   };
 
+  const validateFile = (selectedFile) => {
+    if (!selectedFile) {
+      return 'Dataset file is required';
+    }
+    const allowedExtensions = ['.csv', '.xlsx', '.xls', '.parquet'];
+    const ext = selectedFile.name.substring(selectedFile.name.lastIndexOf('.')).toLowerCase();
+    if (!allowedExtensions.includes(ext)) {
+      return 'Invalid file type. Only CSV, Excel, or Parquet files are allowed.';
+    }
+    return '';
+  };
+
   const handleInputChange = (e) => {
     const val = e.target.value;
     setProjectName(val);
@@ -64,15 +75,20 @@ export default function ProjectModal({ algorithm, isOpen, onClose, onCreate, exi
     setIsTouched(true);
     
     const validationError = validateName(projectName, true);
-    if (validationError) {
-      console.warn('[DERA Client Modal] Validation failed:', validationError);
+    const fError = validateFile(file);
+    
+    if (validationError || fError) {
+      console.warn('[DERA Client Modal] Validation failed:', validationError, fError);
       setError(validationError);
-      inputRef.current?.focus();
+      setFileError(fError);
+      if (validationError) {
+        inputRef.current?.focus();
+      }
       return;
     }
 
     console.log('[DERA Client Modal] Validation passed. Triggering onCreate...');
-    onCreate(projectName);
+    onCreate(projectName, file);
   };
 
   return (
@@ -107,7 +123,8 @@ export default function ProjectModal({ algorithm, isOpen, onClose, onCreate, exi
 
         {/* Modal Form */}
         <form onSubmit={handleSubmit}>
-          <div className="mb-5">
+          {/* Project Name Field */}
+          <div className="mb-4">
             <label htmlFor="projectName" className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">
               Project / Folder Name
             </label>
@@ -130,7 +147,7 @@ export default function ProjectModal({ algorithm, isOpen, onClose, onCreate, exi
 
             {/* Error Message */}
             {error && (
-              <div className="mt-2.5 flex items-start gap-2 text-xs text-red-400 font-medium">
+              <div className="mt-2 flex items-start gap-2 text-xs text-red-400 font-medium">
                 <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
                 <span>{error}</span>
               </div>
@@ -138,14 +155,63 @@ export default function ProjectModal({ algorithm, isOpen, onClose, onCreate, exi
 
             {/* Micro Hint */}
             {!error && (
-              <p className="mt-2 text-[11px] text-zinc-500 leading-normal">
+              <p className="mt-1.5 text-[11px] text-zinc-500 leading-normal">
                 Avoid spaces, slashes, or special symbols. Example: <span className="font-mono text-zinc-400">housing_model_v1</span>.
               </p>
             )}
           </div>
 
+          {/* Dataset Upload Field */}
+          <div className="mb-5">
+            <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">
+              Upload Dataset (CSV, Excel, Parquet)
+            </label>
+            <div 
+              className={`relative flex flex-col items-center justify-center border-2 border-dashed rounded-lg p-5 bg-zinc-950/50 hover:bg-zinc-950 transition-all duration-250 cursor-pointer ${
+                fileError 
+                  ? 'border-red-500/40 hover:border-red-500' 
+                  : 'border-zinc-800 hover:border-zinc-700'
+              }`}
+            >
+              <input
+                type="file"
+                id="csvFile"
+                accept=".csv,.xlsx,.xls,.parquet"
+                onChange={(e) => {
+                  const selectedFile = e.target.files[0];
+                  setFile(selectedFile);
+                  setFileError(validateFile(selectedFile));
+                }}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              />
+              <div className="text-center">
+                {file ? (
+                  <div className="flex flex-col items-center gap-1">
+                    <FileText className="h-7 w-7 text-indigo-400 mb-1" />
+                    <span className="text-xs font-semibold text-zinc-200 max-w-[260px] truncate">{file.name}</span>
+                    <span className="text-[10px] text-zinc-500 font-mono">{(file.size / 1024).toFixed(1)} KB</span>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center gap-1 select-none">
+                    <Upload className="h-7 w-7 text-zinc-500 mb-1" />
+                    <span className="text-xs font-medium text-zinc-350">Click or drag file to upload</span>
+                    <span className="text-[10px] text-zinc-600">CSV, Excel, or Parquet formats</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* File Error Message */}
+            {fileError && (
+              <div className="mt-2 flex items-start gap-2 text-xs text-red-400 font-medium">
+                <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                <span>{fileError}</span>
+              </div>
+            )}
+          </div>
+
           {/* Action Buttons */}
-          <div className="flex justify-end gap-3 pt-2 border-t border-zinc-800/60">
+          <div className="flex justify-end gap-3 pt-4 border-t border-zinc-800/60">
             <button
               type="button"
               onClick={onClose}
@@ -155,7 +221,7 @@ export default function ProjectModal({ algorithm, isOpen, onClose, onCreate, exi
             </button>
             <button
               type="submit"
-              className="px-4 py-2 text-xs font-semibold text-zinc-950 bg-zinc-100 hover:bg-zinc-50 rounded-lg transition-colors cursor-pointer"
+              className="px-4 py-2 text-xs font-bold text-zinc-950 bg-zinc-100 hover:bg-zinc-50 rounded-lg transition-colors cursor-pointer"
             >
               Create Project
             </button>

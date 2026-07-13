@@ -44,7 +44,7 @@ export default function App() {
   useEffect(() => {
     const initApp = async () => {
       try {
-        const res = await fetch('/api/server-session');
+        const res = await fetch('http://localhost:8000/api/server-session');
         const data = await res.json();
         const serverSessionId = data.serverSessionId;
         
@@ -83,7 +83,7 @@ export default function App() {
     if (newView !== 'landing' && proj) {
       sessionStorage.setItem('dera_current_view', newView);
       try {
-        await fetch('/api/sync-active-view', {
+        await fetch('http://localhost:8000/api/sync-active-view', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ projectName: proj, activeView: newView })
@@ -100,7 +100,7 @@ export default function App() {
     if (!projectToDelete) return;
     setIsDeleting(true);
     try {
-      const response = await fetch('/api/delete-project', {
+      const response = await fetch('http://localhost:8000/api/delete-project', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -126,7 +126,7 @@ export default function App() {
 
   const fetchProjects = async () => {
     try {
-      const response = await fetch('/api/list-projects');
+      const response = await fetch('http://localhost:8000/api/list-projects');
       if (response.ok) {
         const data = await response.json();
         if (data.success) {
@@ -149,20 +149,18 @@ export default function App() {
   };
 
   // Create project folders and file via API
-  const handleCreateProject = async (name) => {
-    console.log('[DERA Client App] handleCreateProject triggered with project name:', name);
+  const handleCreateProject = async (name, file) => {
+    console.log('[DERA Client App] handleCreateProject triggered with project name:', name, 'and file:', file?.name);
     setIsCreating(true);
     try {
-      console.log('[DERA Client App] Sending POST /api/create-project request...');
-      const response = await fetch('/api/create-project', {
+      console.log('[DERA Client App] Sending POST http://localhost:8000/api/projects/initialize request...');
+      const formData = new FormData();
+      formData.append('projectName', name);
+      formData.append('file', file);
+
+      const response = await fetch('http://localhost:8000/api/projects/initialize', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ 
-          projectName: name, 
-          algorithmId: selectedModel ? selectedModel.id : 'linear-regression' 
-        }),
+        body: formData
       });
       
       console.log('[DERA Client App] HTTP Response status:', response.status);
@@ -177,30 +175,42 @@ export default function App() {
         setPreloadedState(null);
         await fetchProjects(); // Refresh local list
         
-        console.log('[DERA Client App] Project created. Selected model:', selectedModel);
-        if (selectedModel && selectedModel.id === 'datalab') {
-          // Sync active view to data-lab on backend
-          await fetch('/api/sync-active-view', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ projectName: name, activeView: 'data-lab', activeViewMode: 'data' })
-          });
-          setDataLabSession(null);
-          changeView('data-lab', name);
-        } else if (selectedModel) {
-          console.log('[DERA Client App] Routing to: lr-workspace');
-          changeView('lr-workspace', name);
-        } else {
-          console.log('[DERA Client App] Routing to: dashboard');
-          changeView('dashboard', name);
-        }
+        console.log('[DERA Client App] Project created on FastAPI. Selected model:', selectedModel);
+        
+        // Sync active view to data-lab on Node server
+        await fetch('http://localhost:8000/api/sync-active-view', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ projectName: name, activeView: 'data-lab', activeViewMode: 'data' })
+        });
+
+        // Initialize Data Lab Session state with uploaded dataset info
+        const dataset = data.dataset;
+        const newSession = {
+          sessionId: dataset.datasetId,
+          rawDatasetPath: dataset.rawDatasetPath,
+          processedDatasetPath: '',
+          columns: [],
+          metadata: {
+            totalRows: 0,
+            totalCols: 0,
+            missingCounts: {},
+            dtypes: {},
+            records: []
+          },
+          preprocessingSteps: [],
+          createdAt: dataset.createdAt
+        };
+
+        setDataLabSession(newSession);
+        changeView('data-lab', name);
       } else {
-        console.error('[DERA Client App] Project creation failed:', data.error);
-        alert(data.error || 'Failed to create workspace directory structure.');
+        console.error('[DERA Client App] Project creation failed:', data.error || data.detail);
+        alert(data.error || data.detail || 'Failed to initialize project on FastAPI.');
       }
     } catch (err) {
       console.error('[DERA Client App] Network/Execution error:', err);
-      alert('Error connecting to the local DERA server.');
+      alert('Error connecting to the local DERA FastAPI server on port 8000.');
     } finally {
       setIsCreating(false);
     }
@@ -210,7 +220,7 @@ export default function App() {
   const handleContinueProject = async (projName, targetView = null) => {
     try {
       console.log('[DERA Client App] Loading project state for:', projName);
-      const response = await fetch(`/api/load-project?projectName=${encodeURIComponent(projName)}`);
+      const response = await fetch(`http://localhost:8000/api/load-project?projectName=${encodeURIComponent(projName)}`);
       if (!response.ok) {
         throw new Error('Failed to fetch project details');
       }
@@ -302,7 +312,7 @@ export default function App() {
         initialSession={dataLabSession}
         onLaunchProject={async (projName, algo, sessionData) => {
           // Transition the project to the Model Workspace
-          await fetch('/api/sync-active-view', {
+          await fetch('http://localhost:8000/api/sync-active-view', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ projectName: projName, activeView: 'model-workspace' })
@@ -325,7 +335,7 @@ export default function App() {
             modelParams: null
           };
 
-          await fetch('/api/sync-project', {
+          await fetch('http://localhost:8000/api/sync-project', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ projectName: projName, params })

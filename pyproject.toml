@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dera"
+version = "1.0.0"
+authors = [
+    { name="Samuel Raj Garikimukku" }
+]
+description = "An open-source, no-code Machine Learning workflow automation tool"
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "pandas",
+    "scikit-learn",
+    "fastapi",
+    "uvicorn",
+    "python-multipart"
+]
+
+[project.scripts]
+dera = "backend.main:run_gui"
+
+[tool.setuptools]
+packages = ["backend"]
+
+[tool.setuptools.package-data]
+"*" = ["dist/**/*", "dist/*"]

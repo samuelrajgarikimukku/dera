@@ -46,6 +46,8 @@ const formatPreviewNumber = (val) => {
   return val % 1 !== 0 ? Number(val.toFixed(4)) : val;
 };
 
+const DATALAB_API_BASE = 'http://localhost:8000/api/datalab';
+
 export default function DataLabWorkspace({
   projectName,
   onBack,
@@ -78,7 +80,7 @@ export default function DataLabWorkspace({
       const fetchSavedGraphs = async () => {
         setIsLoadingSaved(true);
         try {
-          const res = await fetch(`/api/get-saved-graphs?projectName=${encodeURIComponent(projectName)}`);
+          const res = await fetch(`${DATALAB_API_BASE}/get-saved-graphs?projectName=${encodeURIComponent(projectName)}`);
           const data = await res.json();
           if (res.ok && data.success) {
             setSavedGraphs(data.graphs);
@@ -326,7 +328,7 @@ export default function DataLabWorkspace({
     if (projectName && session) {
       const syncSession = async () => {
         try {
-          await fetch('/api/sync-datalab-session', {
+          await fetch(`${DATALAB_API_BASE}/sync-datalab-session`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ projectName, session })
@@ -362,7 +364,7 @@ export default function DataLabWorkspace({
     setIsProcessing(true);
     try {
       const activePath = session.processedDatasetPath || session.rawDatasetPath;
-      const res = await fetch(`/api/preview-dataset?projectName=${encodeURIComponent(projectName)}&filePath=${encodeURIComponent(activePath)}&limit=${limitVal}`);
+      const res = await fetch(`${DATALAB_API_BASE}/preview-dataset?projectName=${encodeURIComponent(projectName)}&filePath=${encodeURIComponent(activePath)}&limit=${limitVal}`);
       const data = await res.json();
       if (res.ok && data.success) {
         setSession(prev => ({
@@ -415,7 +417,7 @@ export default function DataLabWorkspace({
       setIsLoadingStats(true);
       try {
         const filePath = session.processedDatasetPath || session.rawDatasetPath;
-        const res = await fetch(`/api/column-stats?projectName=${encodeURIComponent(projectName)}&filePath=${encodeURIComponent(filePath)}&column=${encodeURIComponent(selectedColumn)}`);
+        const res = await fetch(`${DATALAB_API_BASE}/column-stats?projectName=${encodeURIComponent(projectName)}&filePath=${encodeURIComponent(filePath)}&column=${encodeURIComponent(selectedColumn)}`);
         if (res.ok) {
           const data = await res.json();
           if (data.success) {
@@ -466,7 +468,7 @@ export default function DataLabWorkspace({
   const handleSelectLocalDataset = async () => {
     setIsSelecting(true);
     try {
-      const response = await fetch(`/api/select-dataset?projectName=${encodeURIComponent(projectName)}`);
+      const response = await fetch(`${DATALAB_API_BASE}/select-dataset?projectName=${encodeURIComponent(projectName)}`);
       const data = await response.json();
       if (response.ok && data.success) {
         if (data.cancelled) {
@@ -516,7 +518,7 @@ export default function DataLabWorkspace({
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await fetch(`/api/upload-dataset?projectName=${encodeURIComponent(projectName)}`, {
+      const response = await fetch(`${DATALAB_API_BASE}/upload-dataset?projectName=${encodeURIComponent(projectName)}`, {
         method: 'POST',
         body: formData
       });
@@ -558,7 +560,7 @@ export default function DataLabWorkspace({
     const lastStep = updatedSteps[updatedSteps.length - 1];
 
     try {
-      const response = await fetch('/api/preprocess-dataset', {
+      const response = await fetch(`${DATALAB_API_BASE}/preprocess-dataset`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1225,7 +1227,7 @@ export default function DataLabWorkspace({
     setProfilingModalData(null);
     try {
       const activePath = session.processedDatasetPath || session.rawDatasetPath;
-      const url = `/api/profiling-report?projectName=${encodeURIComponent(projectName)}&filePath=${encodeURIComponent(activePath)}&reportType=${reportType}&column=${encodeURIComponent(selectedColumn || '')}`;
+      const url = `${DATALAB_API_BASE}/profiling-report?projectName=${encodeURIComponent(projectName)}&filePath=${encodeURIComponent(activePath)}&reportType=${reportType}&column=${encodeURIComponent(selectedColumn || '')}`;
       const res = await fetch(url);
       const resData = await res.json();
       if (res.ok && resData.success) {
@@ -1293,7 +1295,7 @@ export default function DataLabWorkspace({
         setIsModalOpen(false);
         await onLaunchProject(projectName, selectedAlgo, session);
       } else {
-        const response = await fetch('/api/create-project', {
+        const response = await fetch('http://localhost:8000/api/create-project', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -4595,7 +4597,7 @@ plt.tight_layout()`
         }
       };
 
-      const res = await fetch('/api/chart-data', {
+      const res = await fetch(`${DATALAB_API_BASE}/chart-data`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -4700,7 +4702,7 @@ plt.tight_layout()`
         }
       };
       
-      const res = await fetch(`/api/save-graph`, {
+      const res = await fetch(`${DATALAB_API_BASE}/save-graph`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -4866,7 +4868,7 @@ plt.tight_layout()`
   const handleFormatCodeClick = async () => {
     try {
       setExecutionStatus('formatting');
-      const res = await fetch('/api/format-code', {
+      const res = await fetch(`${DATALAB_API_BASE}/format-code`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code: customPythonCode })

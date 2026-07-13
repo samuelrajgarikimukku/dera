@@ -137,7 +137,7 @@ export default function LinearRegressionWorkspace({
  
   const checkComparisons = () => {
     if (!projectName) return;
-    fetch(`/api/get-comparison-history?projectName=${encodeURIComponent(projectName)}`)
+    fetch(`http://localhost:8000/api/get-comparison-history?projectName=${encodeURIComponent(projectName)}`)
       .then((res) => {
         if (!res.ok) throw new Error();
         return res.json();
@@ -259,7 +259,7 @@ export default function LinearRegressionWorkspace({
     setSyncStatus('Syncing');
 
     const delayDebounceFn = setTimeout(() => {
-      fetch('/api/sync-project', {
+      fetch('http://localhost:8000/api/sync-project', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -301,7 +301,7 @@ export default function LinearRegressionWorkspace({
     setColumnsLoading(true);
     setColumnsError('');
     
-    const url = `/api/preview-dataset?projectName=${encodeURIComponent(projectName)}&filePath=${encodeURIComponent(dataset.filePath)}&limit=1`;
+    const url = `http://localhost:8000/api/preview-dataset?projectName=${encodeURIComponent(projectName)}&filePath=${encodeURIComponent(dataset.filePath)}&limit=1`;
     
     fetch(url)
       .then((res) => {
@@ -360,7 +360,7 @@ export default function LinearRegressionWorkspace({
 
   const handleExportCode = async () => {
     try {
-      const response = await fetch('/api/export-code', {
+      const response = await fetch('http://localhost:8000/api/export-code', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -426,7 +426,7 @@ export default function LinearRegressionWorkspace({
     };
 
     try {
-      const response = await fetch('/api/run-pipeline', {
+      const response = await fetch('http://localhost:8000/api/run-pipeline', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -466,7 +466,7 @@ export default function LinearRegressionWorkspace({
         }
 
         // Fetch updated comparison history to see if multiple versions now exist
-        const historyRes = await fetch(`/api/get-comparison-history?projectName=${encodeURIComponent(projectName)}`);
+        const historyRes = await fetch(`http://localhost:8000/api/get-comparison-history?projectName=${encodeURIComponent(projectName)}`);
         if (historyRes.ok) {
           const historyData = await historyRes.json();
           if (historyData.success && historyData.history) {

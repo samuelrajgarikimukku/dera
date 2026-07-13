@@ -92,7 +92,7 @@ export default function CompareWorkspace({ projectName, compareData, onBack, onE
   useEffect(() => {
     setLoading(true);
     setError('');
-    fetch(`/api/get-comparison-history?projectName=${encodeURIComponent(projectName)}`)
+    fetch(`http://localhost:8000/api/get-comparison-history?projectName=${encodeURIComponent(projectName)}`)
       .then((res) => {
         if (!res.ok) throw new Error('Failed to fetch comparison history');
         return res.json();
@@ -152,7 +152,7 @@ export default function CompareWorkspace({ projectName, compareData, onBack, onE
   const handleDeleteModel = async () => {
     if (!modelToDelete) return;
     try {
-      const response = await fetch('/api/delete-model', {
+      const response = await fetch('http://localhost:8000/api/delete-model', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
