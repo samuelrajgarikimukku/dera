@@ -1,0 +1,379 @@
+.ribbon {
+  background: var(--color-bg-ribbon);
+  border-bottom: 1px solid var(--color-border-main);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  flex-shrink: 0;
+  min-height: 152px;
+  height: 152px;
+  padding: 0;
+  overflow: visible;
+  position: relative;
+  z-index: 40;
+  transition: height 0.22s cubic-bezier(0.4, 0, 0.2, 1), min-height 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.ribbon.collapsed {
+  min-height: 32px;
+  height: 32px;
+}
+
+.ribbon-tabs-bar {
+  display: flex;
+  align-items: flex-end;
+  background: var(--color-border-subtle);
+  border-bottom: 1px solid var(--color-border-main);
+  height: 32px;
+  overflow-x: auto;
+  flex-shrink: 0;
+  padding: 0 48px 0 16px; /* Right padding increased to fit the expand chevron without overlap */
+  gap: 4px;
+  position: relative;
+}
+
+.ribbon-home-btn {
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.12s ease;
+  height: 27px;
+  align-self: flex-end;
+  border-radius: 4px 4px 0 0;
+  position: relative;
+  top: 1px;
+}
+
+.ribbon-home-btn:hover {
+  color: var(--color-primary);
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.ribbon-tabs-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.ribbon-tab {
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: none;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  font-weight: 550;
+  height: 27px;
+  padding: 0 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  font-family: var(--font-sans);
+  display: flex;
+  align-items: center;
+  border-radius: 4px 4px 0 0;
+  transition: all 0.12s ease;
+  position: relative;
+  top: 1px; /* Shifts active tab down to overlap the tab bar's border-bottom */
+}
+
+.ribbon-tab:hover {
+  color: var(--color-text-main);
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.ribbon-tab.active {
+  background: var(--color-bg-topbar); /* Matches tools container bg (white) */
+  border-color: var(--color-border-main);
+  border-bottom: 1px solid var(--color-bg-topbar); /* Masks the parent's border-bottom */
+  color: var(--color-primary);
+  font-weight: 600;
+  z-index: 10;
+  box-shadow: inset 0 2.5px 0 0 var(--color-primary); /* Top purple highlight bar */
+}
+
+.ribbon-tools-container {
+  height: 120px;
+  padding: 8px 12px;
+  display: flex;
+  align-items: stretch;
+  background: var(--color-bg-topbar); /* White bg */
+  overflow-x: auto;
+  overflow-y: hidden;
+  gap: 0; /* Managed by group padding */
+  opacity: 1;
+  transition: height 0.22s cubic-bezier(0.4, 0, 0.2, 1), 
+              padding 0.22s cubic-bezier(0.4, 0, 0.2, 1), 
+              opacity 0.15s linear;
+}
+
+.ribbon.collapsed .ribbon-tools-container {
+  height: 0;
+  min-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* Custom thin scrollbar for ribbon tools container */
+.ribbon-tools-container::-webkit-scrollbar {
+  height: 5px;
+}
+
+.ribbon-tools-container::-webkit-scrollbar-track {
+  background: var(--color-bg-ribbon);
+}
+
+.ribbon-tools-container::-webkit-scrollbar-thumb {
+  background: var(--color-border-main);
+  border-radius: 10px;
+}
+
+.ribbon-tools-container::-webkit-scrollbar-thumb:hover {
+  background: var(--color-primary);
+}
+
+/* Ribbon Groups */
+.ribbon-group {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 16px;
+  position: relative;
+  min-height: 100%;
+}
+
+/* Subtle fading vertical separator between groups */
+.ribbon-group:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 15%;
+  bottom: 15%;
+  width: 1px;
+  background: linear-gradient(to bottom, transparent, var(--color-border-main) 30%, var(--color-border-main) 70%, transparent);
+}
+
+.ribbon-group-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-grow: 1;
+}
+
+.ribbon-column {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  justify-content: center;
+}
+
+.ribbon-group-label {
+  text-align: center;
+  font-size: 11px;
+  color: var(--color-text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  margin-top: auto;
+  padding-bottom: 2px;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  user-select: none;
+}
+
+/* Ribbon Buttons */
+.rbtn-large {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 74px;
+  height: 56px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  text-align: center;
+  gap: 4px;
+  font-size: 12px;
+  font-family: var(--font-sans);
+  line-height: 1.1;
+  transition: all 0.12s ease;
+  user-select: none;
+}
+
+.rbtn-large:hover:not(:disabled) {
+  background: var(--color-primary-bg);
+  border-color: var(--color-primary-border);
+  color: var(--color-primary);
+}
+
+.rbtn-large.active {
+  background: var(--color-primary-bg);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  box-shadow: 0 0 8px rgba(99, 102, 241, 0.1);
+}
+
+.rbtn-large:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+
+.rbtn-large svg {
+  color: var(--color-primary);
+  transition: color 0.12s ease;
+}
+
+.rbtn-large:hover:not(:disabled) svg {
+  color: var(--color-primary-hover);
+}
+
+.rbtn-small {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  width: 138px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 0 8px;
+  font-size: 12px;
+  font-family: var(--font-sans);
+  transition: all 0.12s ease;
+  text-align: left;
+  user-select: none;
+}
+
+.rbtn-small:hover:not(:disabled) {
+  background: var(--color-primary-bg);
+  border-color: var(--color-primary-border);
+  color: var(--color-primary);
+}
+
+.rbtn-small.active {
+  background: var(--color-primary-bg);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  box-shadow: 0 0 6px rgba(99, 102, 241, 0.08);
+}
+
+.rbtn-small:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+
+.rbtn-small svg {
+  color: var(--color-primary);
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  transition: color 0.12s ease;
+}
+
+.rbtn-small:hover:not(:disabled) svg {
+  color: var(--color-primary-hover);
+}
+
+/* Train Model Premium Action Button */
+.ribbon-train-btn {
+  margin-left: auto;
+  align-self: center;
+  background: linear-gradient(135deg, #7F77DD 0%, #635AC7 100%);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 4px 14px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s ease-in-out;
+  box-shadow: 0 2px 8px rgba(127, 119, 221, 0.25);
+  height: 22px;
+  user-select: none;
+  font-family: var(--font-sans);
+}
+
+.ribbon-train-btn:hover {
+  background: linear-gradient(135deg, #938BF0 0%, #756CD8 100%);
+  box-shadow: 0 4px 12px rgba(127, 119, 221, 0.35);
+  transform: translateY(-1px);
+}
+
+.ribbon-train-btn:active {
+  transform: translateY(0) scale(0.98);
+  box-shadow: 0 2px 6px rgba(127, 119, 221, 0.2);
+}
+
+.ribbon-train-btn i {
+  font-size: 14px;
+  color: #ffffff;
+}
+
+/* Chevron controls for ribbon collapse/expand */
+.ribbon-collapse-btn {
+  position: absolute;
+  right: 12px;
+  bottom: 6px;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--color-text-dim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 50;
+  transition: all 0.12s ease-in-out;
+}
+
+.ribbon-collapse-btn:hover {
+  background: rgba(0, 0, 0, 0.05);
+  border-color: var(--color-border-main);
+  color: var(--color-text-main);
+}
+
+.ribbon-collapse-btn i {
+  font-size: 13px;
+}
+
+.ribbon-expand-btn {
+  position: absolute;
+  right: 12px;
+  bottom: 5px;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--color-text-dim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 50;
+  transition: all 0.12s ease-in-out;
+}
+
+.ribbon-expand-btn:hover {
+  background: rgba(0, 0, 0, 0.05);
+  border-color: var(--color-border-main);
+  color: var(--color-text-main);
+}
+
+.ribbon-expand-btn i {
+  font-size: 13px;
+}

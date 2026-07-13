@@ -1,0 +1,25 @@
+:root {
+  --font-sans: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', sfmono-regular, Consolas, "Liberation Mono", Menlo, Courier, monospace;
+  --color-primary: #635AC7;
+  --color-primary-hover: #4F46B5;
+  --color-primary-bg: #EEECFC;
+  --color-primary-border: #7F77DD44;
+  --color-bg-app: #f9fafb;
+  --color-bg-topbar: #ffffff;
+  --color-bg-ribbon: #f3f4f6;
+  --color-bg-sidebar: #fafafa;
+  --color-bg-item-hover: #f3f4f6;
+  --color-border-main: #e5e7eb;
+  --color-border-subtle: #f3f4f6;
+  --color-text-main: #1f2937;
+  --color-text-muted: #4b5563;
+  --color-text-dim: #9ca3af;
+  --color-text-dark: #6b7280;
+  --color-success: #10B981;
+  --color-success-bg: #ECFDF5;
+  --color-warning: #D97706;
+  --color-warning-bg: #FEF3C7;
+  --color-danger: #EF4444;
+  --color-danger-border: #FCA5A5;
+}

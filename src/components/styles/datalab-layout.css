@@ -1,0 +1,228 @@
+.app {
+  background: var(--color-bg-app);
+  color: var(--color-text-main);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-size: 15px;
+  font-family: var(--font-sans);
+}
+
+.topbar {
+  background: var(--color-bg-topbar);
+  border-bottom: 1px solid var(--color-border-subtle);
+  padding: 0 16px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+}
+
+.badge {
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 4px;
+  letter-spacing: 0.4px;
+}
+
+.version {
+  font-size: 13px;
+  color: var(--color-text-dim);
+}
+
+.filename {
+  font-size: 14px;
+  color: var(--color-text-muted);
+  margin-left: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-ghost {
+  background: transparent;
+  border: 1px solid var(--color-border-main);
+  color: var(--color-text-muted);
+  font-size: 13px;
+  padding: 4px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.btn-primary {
+  background: var(--color-primary);
+  border: none;
+  color: #fff;
+  font-size: 13px;
+  padding: 5px 12px;
+  border-radius: 5px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 500;
+}
+
+.btn-danger {
+  background: transparent;
+  border: 1px solid var(--color-danger-border);
+  color: var(--color-danger);
+  font-size: 13px;
+  padding: 4px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.main {
+  display: grid;
+  grid-template-columns: 260px 1fr 220px;
+  flex: 1;
+  min-height: 0;
+}
+
+.center-panel {
+  background: var(--color-bg-app);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.panel-header {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--color-border-main);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.panel-title {
+  font-size: 14px;
+  color: var(--color-text-muted);
+  flex: 1;
+}
+
+.meta-chips {
+  display: flex;
+  gap: 6px;
+}
+
+.chip {
+  background: var(--color-bg-item-hover);
+  border: 1px solid var(--color-border-main);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.chip span {
+  color: var(--color-primary-hover);
+  font-weight: 500;
+}
+
+/* Resizable stats sidebar handle */
+.sidebar-left {
+  border-right: none !important;
+}
+
+.resizer-handle {
+  width: 6px;
+  cursor: col-resize;
+  background: transparent;
+  transition: background 0.15s ease;
+  position: relative;
+  z-index: 50;
+  grid-column: 2;
+  border-right: 1px solid var(--color-border-main);
+}
+
+.resizer-handle:hover,
+.resizer-handle:active {
+  background: var(--color-bg-item-hover);
+}
+
+.resizer-handle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 2px;
+  height: 24px;
+  border-left: 1px double var(--color-text-dim);
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.resizer-handle:hover::after {
+  opacity: 1;
+}
+
+/* Table/Graph View Toggle styling */
+.view-toggle-container {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 2px;
+  background: var(--color-bg-ribbon);
+  padding: 3px;
+  border-radius: 6px;
+  border: 1px solid var(--color-border-main);
+  z-index: 10;
+}
+
+.view-toggle-btn {
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  border: 1px solid transparent;
+  transition: all 0.2s ease;
+  font-family: var(--font-sans);
+}
+
+.view-toggle-btn.active {
+  background: var(--color-bg-topbar);
+  border-color: var(--color-border-main);
+  color: var(--color-primary);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.view-toggle-btn:not(.active) {
+  color: var(--color-text-muted);
+  background: transparent;
+}
+
+.view-toggle-btn:not(.active):hover {
+  background: var(--color-bg-item-hover);
+  color: var(--color-text-main);
+}
