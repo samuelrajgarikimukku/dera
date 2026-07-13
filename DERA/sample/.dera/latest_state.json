@@ -41,17 +41,6 @@
         "coupon_used_last_month": 0,
         "customer_support_calls": 0,
         "churn": 0
-      },
-      "dtypes": {
-        "customer_id": "Int64",
-        "age": "Int64",
-        "city": "String",
-        "orders_last_30_days": "Int64",
-        "avg_order_value": "Int64",
-        "days_since_last_order": "Int64",
-        "coupon_used_last_month": "Int64",
-        "customer_support_calls": "Int64",
-        "churn": "Int64"
       }
     },
     "createdAt": "2026-07-13T04:06:36Z"

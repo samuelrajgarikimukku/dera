@@ -1652,6 +1652,77 @@ async def load_project(projectName: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/projects/initialize")
+async def initialize_project(projectName: str = Form(...), file: UploadFile = File(...)):
+    projectName = projectName.strip()
+    if not projectName:
+        raise HTTPException(status_code=400, detail="Project name is required")
+    if ".." in projectName or "/" in projectName or "\\" in projectName:
+        raise HTTPException(status_code=400, detail="Invalid project name")
+        
+    dera_root = os.path.abspath(os.path.join(os.getcwd(), 'DERA'))
+    if os.path.exists(dera_root):
+        existing_dirs = os.listdir(dera_root)
+        is_duplicate = any(d.lower() == projectName.lower() for d in existing_dirs if os.path.isdir(os.path.join(dera_root, d)))
+        if is_duplicate:
+            raise HTTPException(status_code=400, detail="Project name already exists. Please choose a different name.")
+    else:
+        os.makedirs(dera_root, exist_ok=True)
+        
+    project_dir = ensure_directories_exist(projectName)
+    iso_now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    
+    filename = file.filename
+    format_type = filename.split('.')[-1].lower() if '.' in filename else 'csv'
+    data_dir = os.path.join(project_dir, 'data')
+    
+    dest_path = os.path.join(data_dir, filename)
+    try:
+        content = await file.read()
+        with open(dest_path, "wb") as f:
+            f.write(content)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to write uploaded file: {str(e)}")
+        
+    clear_db_cache(projectName)
+    relative_raw_path = f"data/{filename}"
+    dataset = register_raw_dataset(projectName, filename, "", relative_raw_path, format_type)
+    
+    # Save config
+    config_path = os.path.join(project_dir, '.dera', 'project_config.json')
+    with open(config_path, 'w', encoding='utf-8') as wf:
+        json.dump({
+            "projectName": projectName,
+            "algorithmId": "linear-regression",
+            "createdAt": iso_now,
+            "projectVersion": "1.0"
+        }, wf, indent=2)
+        
+    # Save default state
+    state_path = os.path.join(project_dir, '.dera', 'latest_state.json')
+    default_state = {
+        "algorithmId": "linear-regression",
+        "projectName": projectName,
+        "parameters": {
+            "algorithmId": "linear-regression",
+            "dataset": {"hasTarget": "Yes", "targetColumn": "target", "filePath": relative_raw_path, "excludedColumns": []},
+            "trainTestSplit": {"testSize": 0.2, "randomState": 48, "shuffle": True, "useAdvanced": False},
+            "modelParams": {}
+        },
+        "datasetPath": relative_raw_path,
+        "targetColumn": "target",
+        "metrics": None,
+        "activeRunId": None
+    }
+    with open(state_path, 'w', encoding='utf-8') as wf:
+        json.dump(default_state, wf, indent=2)
+        
+    return {
+        "success": True,
+        "projectName": projectName,
+        "dataset": dataset
+    }
+
 @app.post("/api/create-project")
 async def create_project(payload: CreateProjectPayload):
     projectName = payload.projectName.strip()
@@ -2787,8 +2858,26 @@ async def sync_datalab_session(payload: SyncSessionPayload):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# --- Serve Single-Page Application (SPA) ---
+from fastapi.responses import FileResponse
+
+# Mount the static assets built by Vite
+dist_assets_path = os.path.abspath(os.path.join(os.getcwd(), 'dist', 'assets'))
+if os.path.exists(dist_assets_path):
+    app.mount("/assets", StaticFiles(directory=dist_assets_path), name="assets")
+
+# Catch-all route to serve Vite index.html for client-side routing
+@app.get("/{catchall:path}")
+async def serve_spa(catchall: str):
+    index_path = os.path.abspath(os.path.join(os.getcwd(), 'dist', 'index.html'))
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+    raise HTTPException(status_code=404, detail="Frontend build index.html not found.")
+
 def run_gui():
+    import webbrowser
     print("[DERA Backend] Starting FastAPI Server on port 8000...")
+    webbrowser.open("http://127.0.0.1:8000")
     uvicorn.run("backend.main:app", host="127.0.0.1", port=8000, reload=True)
 
 if __name__ == "__main__":

@@ -1,0 +1,34 @@
+{
+  "success": true,
+  "imagePath": "DERA/sample/graphs/current_graph.png",
+  "chartType": "histogram",
+  "xAxis": [
+    "customer_id"
+  ],
+  "yAxis": [
+    "age"
+  ],
+  "projectName": "sample",
+  "datasetPath": "C:\\Users\\samue\\Documents\\MINE\\Personal Project\\DERA\\sample\\data\\swiggy_customer_data.csv",
+  "zoom": 1.0,
+  "figureConfig": {
+    "dpi": 150,
+    "figsize": [
+      8,
+      4.5
+    ],
+    "style": "light"
+  },
+  "visualizationMode": "standard",
+  "customCode": "import matplotlib.pyplot as plt\nimport seaborn as sns\n\n# Available variables:\n# df                  - Processed DataFrame\n# raw_df              - Raw DataFrame before preprocessing\n# xAxis               - List of selected X-axis columns (e.g. xAxis[0])\n# yAxis               - List of selected Y-axis columns (e.g. yAxis[0])\n# chartTitle          - Default string title\n# datasetName         - Raw filename\n# projectName         - Current project folder name\n# selectedChartType   - Active standard chart type ID ('scatter')\n\nplt.figure(figsize=(10, 6))\nsns.scatterplot(data=df, x=xAxis[0], y=yAxis[0] if len(yAxis) > 0 else None)\nplt.title(chartTitle)\nplt.tight_layout()",
+  "advancedOptions": {
+    "binningEnabled": false,
+    "binCount": 10,
+    "densityEnabled": true,
+    "aggregationMethod": "none",
+    "sortOrder": "none",
+    "topNCount": "",
+    "chartTitle": "Histogram - customer_id vs age"
+  },
+  "createdAt": "2026-07-13T10:32:18.731069"
+}
