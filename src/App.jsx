@@ -250,13 +250,11 @@ export default function App() {
         const hasHistory = data.history && data.history.models && data.history.models.length > 0;
         const targetViewResolved = targetView || (state.activeView === 'data-lab' ? 'data-lab' : (((state.activeView === 'compare-workspace' && hasHistory) || (data.history && data.history.models && data.history.models.length > 1)) ? 'compare-workspace' : 'lr-workspace'));
         
-        if (targetViewResolved === 'data-lab') {
-          const loadedSession = state.dataLabSession || null;
-          if (loadedSession && data.pipeline) {
-            loadedSession.preprocessingSteps = data.pipeline.steps || [];
-          }
-          setDataLabSession(loadedSession);
+        const loadedSession = state.dataLabSession || null;
+        if (loadedSession && data.pipeline) {
+          loadedSession.preprocessingSteps = data.pipeline.steps || [];
         }
+        setDataLabSession(loadedSession);
         
         changeView(targetViewResolved, data.projectName);
       } else {

@@ -301,13 +301,13 @@ export default function LinearRegressionWorkspace({
     setColumnsLoading(true);
     setColumnsError('');
     
-    const url = `http://localhost:8000/api/preview-dataset?projectName=${encodeURIComponent(projectName)}&filePath=${encodeURIComponent(dataset.filePath)}&limit=1`;
+    const url = `http://localhost:8000/api/datalab/preview-dataset?projectName=${encodeURIComponent(projectName)}&filePath=${encodeURIComponent(dataset.filePath)}&limit=1`;
     
     fetch(url)
       .then((res) => {
         if (!res.ok) {
           return res.json().then((data) => {
-            throw new Error(data.error || 'Failed to read dataset preview.');
+            throw new Error(data.error || data.detail || 'Failed to read dataset preview.');
           });
         }
         return res.json();
@@ -446,7 +446,7 @@ export default function LinearRegressionWorkspace({
       }
 
       if (!response.ok) {
-        throw new Error(data.error || 'Pipeline execution failed.');
+        throw new Error(data.error || data.detail || 'Pipeline execution failed.');
       }
 
       if (data.success) {

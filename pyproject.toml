@@ -16,14 +16,17 @@ dependencies = [
     "scikit-learn",
     "fastapi",
     "uvicorn",
-    "python-multipart"
+    "polars",
+    "python-multipart",
+    "xgboost"
 ]
 
 [project.scripts]
 dera = "backend.main:run_gui"
 
 [tool.setuptools]
-packages = ["backend"]
+include-package-data = true
+packages = ["backend", "backend.dataset", "backend.graphs"]
 
 [tool.setuptools.package-data]
-"*" = ["dist/**/*", "dist/*"]
+backend = ["dist/**/*", "dist/*"]

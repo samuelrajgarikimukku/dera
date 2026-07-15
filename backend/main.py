@@ -1,4 +1,10 @@
 import os
+import warnings
+try:
+    from polars.exceptions import PerformanceWarning
+    warnings.simplefilter("ignore", PerformanceWarning)
+except ImportError:
+    pass
 import json
 import time
 import random
@@ -231,14 +237,19 @@ class SaveGraphPayload(BaseModel):
 # --- Parameter helper mappings ---
 
 def camel_to_snake(name: str) -> str:
+    if len(name) <= 1:
+        return name
     if name == 'copyX':
         return 'copy_X'
     if name == 'l1Ratio':
         return 'l1_ratio'
     s = ''
-    for char in name:
+    for i, char in enumerate(name):
         if char.isupper():
-            s += '_' + char.lower()
+            if i == 0:
+                s += char.lower()
+            else:
+                s += '_' + char.lower()
         else:
             s += char
     return s
@@ -409,9 +420,7 @@ def ensure_directories_exist(project_name: str):
         os.path.join(project_dir, 'data'),
         os.path.join(project_dir, 'models'),
         os.path.join(project_dir, 'graphs'),
-        os.path.join(project_dir, 'graphs', 'saved'),
-        os.path.join(project_dir, 'reports'),
-        os.path.join(project_dir, 'exports')
+        os.path.join(project_dir, 'graphs', 'saved')
     ]
     for d in dirs:
         os.makedirs(d, exist_ok=True)
@@ -531,14 +540,14 @@ def get_changed_columns(step: dict) -> list:
 
 def run_polars_preview(resolved_raw_path: str, steps: list, limit: Optional[int] = 50):
     lf = polars_transforms.load_dataset(resolved_raw_path)
-    original_dtypes = {k: str(v) for k, v in lf.schema.items()}
+    original_dtypes = {k: str(v) for k, v in lf.collect_schema().items()}
     
     lf = polars_transforms.apply_pipeline(lf, steps)
-    new_dtypes = {k: str(v) for k, v in lf.schema.items()}
+    new_dtypes = {k: str(v) for k, v in lf.collect_schema().items()}
     
     total_rows = lf.select(pl.len()).collect().item()
-    total_cols = len(lf.columns)
-    columns = lf.columns
+    columns = lf.collect_schema().names()
+    total_cols = len(columns)
     
     missing_lf = lf.select([pl.col(c).null_count().alias(c) for c in columns])
     missing_df = missing_lf.collect()
@@ -563,6 +572,7 @@ def run_polars_preview(resolved_raw_path: str, steps: list, limit: Optional[int]
         "success": True,
         "originalDtypes": original_dtypes,
         "newDtypes": new_dtypes,
+        "dtypes": new_dtypes,
         "totalRows": int(total_rows),
         "totalCols": int(total_cols),
         "missingCounts": missing_counts,
@@ -615,9 +625,9 @@ def precompute_metadata_in_bg(project_name: str, file_path: str, steps: list, co
 # --- ML Pipeline Code Generation Logic in Python ---
 
 def generate_user_visible_code(project_name: str, params: dict) -> str:
-    dataset = params.get("dataset", {})
-    train_test_split = params.get("trainTestSplit", {})
-    model_params = params.get("modelParams", {})
+    dataset = params.get("dataset") or {}
+    train_test_split = params.get("trainTestSplit") or {}
+    model_params = params.get("modelParams") or {}
     algo_id = params.get("algorithmId", "linear-regression")
     
     meta = ALGO_METADATA.get(algo_id, ALGO_METADATA['linear-regression'])
@@ -817,6 +827,58 @@ def generate_user_visible_code(project_name: str, params: dict) -> str:
             col_name = p.get('column')
             new_name_val = p.get('new_name') or f"{col_name}_binned"
             preprocessing_lines.append(f"df['{new_name_val}'] = pd.cut(df['{col_name}'], bins={p.get('bins', 5)}).astype(str)")
+        elif s_type in ('custom_binning', 'binning'):
+            col = p.get("column")
+            out_col = p.get("outputColumn", f"{col}_Bin")
+            bins_list = p.get("bins", [])
+            default_label = p.get("defaultLabel")
+            
+            sorted_bins = sorted(bins_list, key=lambda x: float(x.get("from", 0)))
+            
+            preprocessing_lines.append(f"# Custom binning for {col}")
+            for b in sorted_bins:
+                b_from = b.get("from")
+                b_to = b.get("to")
+                b_label = b.get("label")
+                if b_label is None or str(b_label).strip() == '':
+                    b_label = f"{b_from}–{b_to}"
+                preprocessing_lines.append(f"# {b_from} to {b_to} -> {b_label}")
+            if default_label is not None:
+                preprocessing_lines.append(f"# All other values -> {default_label}")
+            
+            edges = []
+            labels = []
+            if sorted_bins:
+                edges.append(float(sorted_bins[0].get("from", 0)))
+                for b in sorted_bins:
+                    edges.append(float(b.get("to", 0)))
+                    lbl = b.get("label")
+                    if lbl is None or str(lbl).strip() == '':
+                        lbl = f"{b.get('from')}–{b.get('to')}"
+                    labels.append(lbl)
+                
+                if default_label is not None:
+                    edges.append(float('inf'))
+                    labels.append(default_label)
+            
+            edges_strs = []
+            for edge in edges:
+                if edge == float('inf'):
+                    edges_strs.append("float('inf')")
+                elif edge == float('-inf'):
+                    edges_strs.append("float('-inf')")
+                else:
+                    edges_strs.append(str(edge))
+            edges_repr = "[" + ", ".join(edges_strs) + "]"
+            
+            preprocessing_lines.append(f"bins = {edges_repr}")
+            preprocessing_lines.append(f"labels = {json.dumps(labels)}")
+            preprocessing_lines.append(f"df['{out_col}'] = pd.cut(")
+            preprocessing_lines.append(f"    df['{col}'],")
+            preprocessing_lines.append(f"    bins=bins,")
+            preprocessing_lines.append(f"    labels=labels,")
+            preprocessing_lines.append(f"    include_lowest=True")
+            preprocessing_lines.append(f")")
         elif s_type == 'date_parts':
             parts = p.get("parts", ["year", "month", "day"])
             for part in parts:
@@ -925,7 +987,10 @@ def generate_user_visible_code(project_name: str, params: dict) -> str:
                 python_val = v
             else:
                 python_val = f'"{v}"'
-        arg_pairs.append(f"{camel_to_snake(k)}={python_val}")
+        param_name = camel_to_snake(k)
+        if algo_id == 'kmeans' and param_name == 'copy_X':
+            param_name = 'copy_x'
+        arg_pairs.append(f"{param_name}={python_val}")
         
     init_args = ",\n    ".join(arg_pairs)
     
@@ -1034,11 +1099,11 @@ test_r2 = model.score(X_test, y_test)
 print("=========================================")
 print("Model Evaluation Metrics")
 print("=========================================")
-print(f"Training R² score:      {train_r2:.4f}")
+print(f"Training R2 score:      {train_r2:.4f}")
 print(f"Training RMSE:          {train_rmse:.4f}")
 print(f"Training MAE:           {train_mae:.4f}")
 print("-----------------------------------------")
-print(f"Testing R² score:       {test_r2:.4f}")
+print(f"Testing R2 score:       {test_r2:.4f}")
 print(f"Testing RMSE:           {test_rmse:.4f}")
 print(f"Testing MAE:            {test_mae:.4f}")
 print("=========================================")
@@ -1094,9 +1159,9 @@ __EVALUATION_SECTION__
             .replace("__EVALUATION_SECTION__", evaluation_section))
 
 def generate_python_code(project_name: str, params: dict) -> str:
-    dataset = params.get("dataset", {})
-    train_test_split = params.get("trainTestSplit", {})
-    model_params = params.get("modelParams", {})
+    dataset = params.get("dataset") or {}
+    train_test_split = params.get("trainTestSplit") or {}
+    model_params = params.get("modelParams") or {}
     algo_id = params.get("algorithmId", "linear-regression")
     
     meta = ALGO_METADATA.get(algo_id, ALGO_METADATA['linear-regression'])
@@ -1107,7 +1172,7 @@ def generate_python_code(project_name: str, params: dict) -> str:
     has_target = dataset.get("hasTarget") == 'Yes' or dataset.get("hasTarget") is True
     target_col = dataset.get("targetColumn", "target") if has_target else "target"
     
-    backend_dir = os.path.abspath(os.path.join(os.getcwd(), 'backend', 'dataset')).replace('\\', '\\\\')
+    backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), 'dataset')).replace('\\', '\\\\')
     project_root = os.path.abspath(os.path.join(os.getcwd(), 'DERA', project_name))
     
     resolved_raw_path = dataset.get("filePath", "")
@@ -1132,7 +1197,10 @@ def generate_python_code(project_name: str, params: dict) -> str:
                 python_val = v
             else:
                 python_val = f'"{v}"'
-        arg_pairs.append(f"{camel_to_snake(k)}={python_val}")
+        param_name = camel_to_snake(k)
+        if algo_id == 'kmeans' and param_name == 'copy_X':
+            param_name = 'copy_x'
+        arg_pairs.append(f"{param_name}={python_val}")
         
     init_args = ",\n    ".join(arg_pairs)
     
@@ -1247,11 +1315,11 @@ metrics = {{
 print("=========================================")
 print(f"Model Evaluation Metrics ({{PROJECT_NAME}})")
 print("=========================================")
-print(f"Training R² score:      {{train_r2:.4f}}")
+print(f"Training R2 score:      {{train_r2:.4f}}")
 print(f"Training RMSE:          {{train_rmse:.4f}}")
 print(f"Training MAE:           {{train_mae:.4f}}")
 print("-----------------------------------------")
-print(f"Testing R² score:       {{test_r2:.4f}}")
+print(f"Testing R2 score:       {{test_r2:.4f}}")
 print(f"Testing RMSE:           {{test_rmse:.4f}}")
 print(f"Testing MAE:            {{test_mae:.4f}}")
 print(f"Testing MSE:            {{test_mse:.4f}}")
@@ -1355,6 +1423,12 @@ PROJECT_NAME = "__PROJECT_NAME__"
 import os
 import sys
 import json
+import warnings
+try:
+    from polars.exceptions import PerformanceWarning
+    warnings.simplefilter("ignore", PerformanceWarning)
+except ImportError:
+    pass
 
 backend_dir = r"__BACKEND_DIR__"
 if backend_dir not in sys.path:
@@ -1846,6 +1920,8 @@ async def train_model(payload: TrainModelPayload):
             raise HTTPException(status_code=500, detail=stderr_data or f"Python training exited with code {process.returncode}")
             
         return {"success": True, "output": stdout_data}
+    except HTTPException as he:
+        raise he
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1921,6 +1997,8 @@ async def run_pipeline(payload: RunPipelinePayload):
             "runId": next_run_id,
             "file": f"Run {next_run_id}"
         }
+    except HTTPException as he:
+        raise he
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -2242,15 +2320,16 @@ async def column_stats(projectName: str = "", filePath: str = "", column: str = 
         lf = polars_transforms.load_dataset(resolved_path)
         lf = polars_transforms.apply_pipeline(lf, steps)
         
-        if column not in lf.columns:
+        schema = lf.collect_schema()
+        if column not in schema.names():
             raise HTTPException(status_code=400, detail=f"Column '{column}' not found in dataset")
             
         total_count = lf.select(pl.len()).collect().item()
         null_count = lf.select(pl.col(column).null_count()).collect().item()
         non_null_count = total_count - null_count
         
-        is_numeric = lf.schema.get(column) in (pl.Int64, pl.Int32, pl.Int16, pl.Int8, pl.Float64, pl.Float32)
-        dtype_str = str(lf.schema.get(column))
+        is_numeric = schema.get(column) in (pl.Int64, pl.Int32, pl.Int16, pl.Int8, pl.Float64, pl.Float32)
+        dtype_str = str(schema.get(column))
         
         stats = {
             "type": dtype_str,
@@ -2333,13 +2412,14 @@ async def column_stats(projectName: str = "", filePath: str = "", column: str = 
                         "fillClass": fill_classes[idx % len(fill_classes)]
                     })
                     
-        num_cols = sum(1 for c in lf.columns if lf.schema[c].is_numeric())
-        obj_cols = len(lf.columns) - num_cols
+        cols = schema.names()
+        num_cols = sum(1 for c in cols if schema[c].is_numeric())
+        obj_cols = len(cols) - num_cols
         total_missing = lf.select(pl.sum_horizontal(pl.all().is_null().sum())).collect().item()
         
         stats["datasetOverview"] = {
             "totalRows": int(total_count),
-            "totalCols": len(lf.columns),
+            "totalCols": len(cols),
             "numericCols": num_cols,
             "objectCols": obj_cols,
             "totalMissing": int(total_missing)
@@ -2862,14 +2942,20 @@ async def sync_datalab_session(payload: SyncSessionPayload):
 from fastapi.responses import FileResponse
 
 # Mount the static assets built by Vite
-dist_assets_path = os.path.abspath(os.path.join(os.getcwd(), 'dist', 'assets'))
+backend_dir = os.path.dirname(os.path.abspath(__file__))
+dist_assets_path = os.path.abspath(os.path.join(backend_dir, 'dist', 'assets'))
+if not os.path.exists(dist_assets_path):
+    dist_assets_path = os.path.abspath(os.path.join(os.getcwd(), 'dist', 'assets'))
+
 if os.path.exists(dist_assets_path):
     app.mount("/assets", StaticFiles(directory=dist_assets_path), name="assets")
 
 # Catch-all route to serve Vite index.html for client-side routing
 @app.get("/{catchall:path}")
 async def serve_spa(catchall: str):
-    index_path = os.path.abspath(os.path.join(os.getcwd(), 'dist', 'index.html'))
+    index_path = os.path.abspath(os.path.join(backend_dir, 'dist', 'index.html'))
+    if not os.path.exists(index_path):
+        index_path = os.path.abspath(os.path.join(os.getcwd(), 'dist', 'index.html'))
     if os.path.exists(index_path):
         return FileResponse(index_path)
     raise HTTPException(status_code=404, detail="Frontend build index.html not found.")
@@ -2878,7 +2964,7 @@ def run_gui():
     import webbrowser
     print("[DERA Backend] Starting FastAPI Server on port 8000...")
     webbrowser.open("http://127.0.0.1:8000")
-    uvicorn.run("backend.main:app", host="127.0.0.1", port=8000, reload=True)
+    uvicorn.run("backend.main:app", host="127.0.0.1", port=8000, reload=False, access_log=False)
 
 if __name__ == "__main__":
     run_gui()

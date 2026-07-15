@@ -10,7 +10,9 @@ Requires-Dist: pandas
 Requires-Dist: scikit-learn
 Requires-Dist: fastapi
 Requires-Dist: uvicorn
+Requires-Dist: polars
 Requires-Dist: python-multipart
+Requires-Dist: xgboost
 Dynamic: license-file
 
 # React + Vite

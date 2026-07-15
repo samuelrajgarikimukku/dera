@@ -2,4 +2,6 @@ pandas
 scikit-learn
 fastapi
 uvicorn
+polars
 python-multipart
+xgboost

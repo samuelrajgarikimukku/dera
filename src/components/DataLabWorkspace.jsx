@@ -220,6 +220,9 @@ export default function DataLabWorkspace({
   const [isPinned, setIsPinned] = useState(true);
   const [isTempExpanded, setIsTempExpanded] = useState(false);
   const ribbonRef = useRef(null);
+  const fillBtnRef = useRef(null);
+  const fillDropdownRef = useRef(null);
+  const [fillDropdownCoords, setFillDropdownCoords] = useState(null);
 
   // Tab click handler
   const handleTabClick = (category) => {
@@ -316,12 +319,56 @@ export default function DataLabWorkspace({
   const [profilingModalData, setProfilingModalData] = useState(null);
   const [isProfilingLoading, setIsProfilingLoading] = useState(false);
 
+  // Binning state variables
+  const [isBinningModalOpen, setIsBinningModalOpen] = useState(false);
+  const [binningColumn, setBinningColumn] = useState('');
+  const [binningOutputColumn, setBinningOutputColumn] = useState('');
+  const [binningBins, setBinningBins] = useState([{ from: '', to: '', label: '' }]);
+  const [assignUncovered, setAssignUncovered] = useState(false);
+  const [uncoveredLabel, setUncoveredLabel] = useState('Other');
+  const [binningError, setBinningError] = useState('');
+  const [binningWarning, setBinningWarning] = useState(null);
+
   // Toast notifications
   const [toast, setToast] = useState({ message: '', type: '', visible: false });
+  const [isFillDropdownOpen, setIsFillDropdownOpen] = useState(false);
 
   const showToast = (message, type = 'success') => {
     setToast({ message, type, visible: true });
   };
+
+  // Handle click outside and viewport repositioning for the ribbon "Fill NaN with" dropdown
+  useEffect(() => {
+    if (!isFillDropdownOpen) return;
+
+    const handleClickOutside = (e) => {
+      if (
+        fillDropdownRef.current && !fillDropdownRef.current.contains(e.target) &&
+        fillBtnRef.current && !fillBtnRef.current.contains(e.target)
+      ) {
+        setIsFillDropdownOpen(false);
+      }
+    };
+
+    const handleResizeOrScroll = () => {
+      if (fillBtnRef.current) {
+        const rect = fillBtnRef.current.getBoundingClientRect();
+        setFillDropdownCoords({ x: rect.left, y: rect.bottom + 6 });
+      }
+    };
+
+    handleResizeOrScroll();
+
+    document.addEventListener('mousedown', handleClickOutside, true);
+    window.addEventListener('resize', handleResizeOrScroll);
+    window.addEventListener('scroll', handleResizeOrScroll, true);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside, true);
+      window.removeEventListener('resize', handleResizeOrScroll);
+      window.removeEventListener('scroll', handleResizeOrScroll, true);
+    };
+  }, [isFillDropdownOpen]);
 
   // Sync Data Lab session state to backend on changes
   useEffect(() => {
@@ -338,6 +385,30 @@ export default function DataLabWorkspace({
         }
       };
       syncSession();
+    }
+  }, [projectName, session]);
+
+  // Load session from backend if projectName is provided but initialSession/session is null
+  useEffect(() => {
+    if (projectName && !session) {
+      const loadSessionFromProject = async () => {
+        try {
+          const res = await fetch(`http://localhost:8000/api/load-project?projectName=${encodeURIComponent(projectName)}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.success && data.state && data.state.dataLabSession) {
+              const loadedSession = data.state.dataLabSession;
+              if (data.pipeline) {
+                loadedSession.preprocessingSteps = data.pipeline.steps || [];
+              }
+              setSession(loadedSession);
+            }
+          }
+        } catch (e) {
+          console.error('[DERA Client DataLab] Failed to load session for project:', e);
+        }
+      };
+      loadSessionFromProject();
     }
   }, [projectName, session]);
 
@@ -641,12 +712,19 @@ export default function DataLabWorkspace({
     runPreprocessing([...session.preprocessingSteps, newStep]);
   };
 
-  const handleFillNull = (strategy, customVal = null) => {
-    if (!selectedColumn) return;
+  const isNumericColumn = (col) => {
+    if (!col || !dtypes[col]) return false;
+    const t = dtypes[col].toLowerCase();
+    return t.includes('int') || t.includes('float') || t.includes('double') || t.includes('num');
+  };
+
+  const handleFillNull = (strategy, customVal = null, colName = null) => {
+    const targetCol = colName || selectedColumn;
+    if (!targetCol) return;
     const newStep = {
       type: 'fill_null',
       params: {
-        column: selectedColumn,
+        column: targetCol,
         strategy,
         value: strategy === 'constant' ? customVal : null
       }
@@ -687,6 +765,188 @@ export default function DataLabWorkspace({
       params: { column: selectedColumn }
     };
     runPreprocessing([...session.preprocessingSteps, newStep]);
+  };
+
+  const handleOpenBinningModal = () => {
+    const colName = selectedColumn || columns[0] || '';
+    setBinningColumn(colName);
+    setBinningOutputColumn(colName ? `${colName}_Bin` : '');
+    setBinningBins([{ from: '', to: '', label: '' }]);
+    setAssignUncovered(false);
+    setUncoveredLabel('Other');
+    setBinningError('');
+    setBinningWarning(null);
+    setIsBinningModalOpen(true);
+  };
+
+  const handleAddBin = () => {
+    setBinningBins([...binningBins, { from: '', to: '', label: '' }]);
+  };
+
+  const handleDeleteBin = (idx) => {
+    const updated = binningBins.filter((_, i) => i !== idx);
+    setBinningBins(updated.length > 0 ? updated : [{ from: '', to: '', label: '' }]);
+  };
+
+  const handleBinChange = (idx, field, value) => {
+    const updated = binningBins.map((b, i) => {
+      if (i === idx) {
+        return { ...b, [field]: value };
+      }
+      return b;
+    });
+    setBinningBins(updated);
+  };
+
+  const getSampledValues = () => {
+    if (!binningColumn || !records) return [];
+    const values = records
+      .map(r => r[binningColumn])
+      .filter(v => v !== null && v !== undefined && v !== '');
+    const uniqueValues = Array.from(new Set(values));
+    uniqueValues.sort((a, b) => {
+      const numA = parseFloat(a);
+      const numB = parseFloat(b);
+      if (!isNaN(numA) && !isNaN(numB)) {
+        return numA - numB;
+      }
+      return String(a).localeCompare(String(b));
+    });
+    return uniqueValues.slice(0, 8);
+  };
+
+  const evaluateValue = (val) => {
+    const num = parseFloat(val);
+    if (isNaN(num)) return '–';
+    const sorted = [...binningBins]
+      .map(b => ({
+        from: parseFloat(b.from),
+        to: parseFloat(b.to),
+        label: b.label.trim() || `${b.from}–${b.to}`
+      }))
+      .filter(b => !isNaN(b.from) && !isNaN(b.to))
+      .sort((a, b) => a.from - b.from);
+    for (const b of sorted) {
+      if (num >= b.from && num <= b.to) {
+        return b.label;
+      }
+    }
+    return uncoveredLabel.trim() ? uncoveredLabel.trim() : 'NULL';
+  };
+
+  const calculateCoverageStats = () => {
+    if (!binningColumn || !records || records.length === 0) return { assignedPct: '0.0', uncoveredPct: '0.0' };
+    const values = records
+      .map(r => parseFloat(r[binningColumn]))
+      .filter(v => !isNaN(v));
+    if (values.length === 0) return { assignedPct: '0.0', uncoveredPct: '0.0' };
+    const sortedBins = [...binningBins]
+      .map(b => ({
+        from: parseFloat(b.from),
+        to: parseFloat(b.to)
+      }))
+      .filter(b => !isNaN(b.from) && !isNaN(b.to))
+      .sort((a, b) => a.from - b.from);
+    let assignedCount = 0;
+    for (const val of values) {
+      let isAssigned = false;
+      for (const b of sortedBins) {
+        if (val >= b.from && val <= b.to) {
+          isAssigned = true;
+          break;
+        }
+      }
+      if (isAssigned) {
+        assignedCount++;
+      }
+    }
+    const assignedPct = ((assignedCount / values.length) * 100).toFixed(1);
+    const uncoveredPct = (100 - parseFloat(assignedPct)).toFixed(1);
+    return { assignedPct, uncoveredPct };
+  };
+
+  const submitBinningPipeline = (parsedBins) => {
+    const newStep = {
+      type: 'binning',
+      params: {
+        column: binningColumn,
+        outputColumn: binningOutputColumn.trim(),
+        bins: parsedBins.map(b => ({
+          from: b.from,
+          to: b.to,
+          label: b.label
+        })),
+        defaultLabel: uncoveredLabel.trim() || null,
+        mode: 'custom'
+      }
+    };
+    runPreprocessing([...session.preprocessingSteps, newStep]);
+    setIsBinningModalOpen(false);
+  };
+
+  const handleApplyBinning = () => {
+    setBinningError('');
+    setBinningWarning(null);
+    if (!binningColumn) {
+      setBinningError('Please select a column.');
+      return;
+    }
+    const outName = binningOutputColumn.trim();
+    if (!outName) {
+      setBinningError('Please specify an output column name.');
+      return;
+    }
+    if (columns.includes(outName)) {
+      setBinningError(`Column "${outName}" already exists in the dataset. Please choose a unique name.`);
+      return;
+    }
+    const parsed = [];
+    for (let i = 0; i < binningBins.length; i++) {
+      const b = binningBins[i];
+      const fromVal = parseFloat(b.from);
+      const toVal = parseFloat(b.to);
+      if (isNaN(fromVal) || isNaN(toVal)) {
+        setBinningError(`Bin ${i + 1} must have numeric "From" and "To" values.`);
+        return;
+      }
+      if (fromVal > toVal) {
+        setBinningError(`Invalid range in Bin ${i + 1}: "From" (${fromVal}) cannot be greater than "To" (${toVal}).`);
+        return;
+      }
+      let label = b.label.trim();
+      if (!label) {
+        label = `${fromVal}–${toVal}`;
+      }
+      parsed.push({ from: fromVal, to: toVal, label });
+    }
+    if (parsed.length === 0) {
+      setBinningError('Please define at least one bin.');
+      return;
+    }
+    const sorted = [...parsed].sort((a, b) => a.from - b.from);
+    for (let i = 1; i < sorted.length; i++) {
+      if (sorted[i].from <= sorted[i - 1].to) {
+        setBinningError(`Overlapping ranges detected: Bin "${sorted[i - 1].label}" (${sorted[i - 1].from} to ${sorted[i - 1].to}) overlaps with Bin "${sorted[i].label}" (${sorted[i].from} to ${sorted[i].to}).`);
+        return;
+      }
+    }
+    const gaps = [];
+    for (let i = 1; i < sorted.length; i++) {
+      const prevTo = sorted[i - 1].to;
+      const currFrom = sorted[i].from;
+      if (currFrom > prevTo + 1) {
+        gaps.push({ from: prevTo + 1, to: currFrom - 1 });
+      }
+    }
+    if (gaps.length > 0 && !uncoveredLabel.trim()) {
+      setBinningWarning({
+        message: 'Gaps detected in boundaries.',
+        gaps: gaps,
+        parsedBins: parsed
+      });
+      return;
+    }
+    submitBinningPipeline(parsed);
   };
 
   const handleOneHotEncode = () => {
@@ -787,20 +1047,22 @@ export default function DataLabWorkspace({
     setMergeNewName('');
   };
 
-  const handleFfill = () => {
-    if (!selectedColumn) return;
+  const handleFfill = (colName = null) => {
+    const targetCol = colName || selectedColumn;
+    if (!targetCol) return;
     const newStep = {
       type: 'ffill',
-      params: { column: selectedColumn }
+      params: { column: targetCol }
     };
     runPreprocessing([...session.preprocessingSteps, newStep]);
   };
 
-  const handleBfill = () => {
-    if (!selectedColumn) return;
+  const handleBfill = (colName = null) => {
+    const targetCol = colName || selectedColumn;
+    if (!targetCol) return;
     const newStep = {
       type: 'bfill',
-      params: { column: selectedColumn }
+      params: { column: targetCol }
     };
     runPreprocessing([...session.preprocessingSteps, newStep]);
   };
@@ -1273,10 +1535,12 @@ export default function DataLabWorkspace({
   const handleOpenLaunchModal = () => {
     if (projectName) {
       setNewProjectName(projectName);
-    } else {
-      const rawName = session.rawDatasetPath.split('/').pop();
+    } else if (session && session.rawDatasetPath) {
+      const rawName = session.rawDatasetPath.split(/[/\\]/).pop();
       const cleanBaseName = rawName.split('.').shift().replace(/[^a-zA-Z0-9]/g, '_');
       setNewProjectName(`${cleanBaseName}_project`);
+    } else {
+      setNewProjectName('new_project');
     }
     setSelectedAlgo(null);
     setProjectError('');
@@ -1643,16 +1907,10 @@ export default function DataLabWorkspace({
                     )}
                   </div>
                 </div>
-                <div className="ribbon-column">
-                  <button className="rbtn-small" disabled={true} title="Action disabled (UI Only)">
-                    <Rows className="h-3.5 w-3.5" />
-                    <span>Keep Top N</span>
-                  </button>
-                  <button className="rbtn-small" disabled={true} title="Action disabled (UI Only)">
-                    <Rows className="h-3.5 w-3.5" />
-                    <span>Keep Bottom N</span>
-                  </button>
-                </div>
+                <button className="rbtn-large" onClick={handleOpenBinningModal}>
+                  <Grid className="h-5 w-5" />
+                  <span>Binning</span>
+                </button>
               </div>
               <div className="ribbon-group-label">Row Operations</div>
             </div>
@@ -1664,47 +1922,93 @@ export default function DataLabWorkspace({
             <div className="ribbon-group">
               <div className="ribbon-group-controls">
                 <div className="ribbon-column">
-                  <button className="rbtn-small" onClick={() => handleFillNull('mean')} disabled={!selectedColumn}>
-                    <Settings className="h-3.5 w-3.5" />
-                    <span>Fill Mean</span>
-                  </button>
-                  <button className="rbtn-small" onClick={() => handleFillNull('median')} disabled={!selectedColumn}>
-                    <Settings className="h-3.5 w-3.5" />
-                    <span>Fill Median</span>
-                  </button>
-                  <button className="rbtn-small" onClick={() => handleFillNull('mode')} disabled={!selectedColumn}>
-                    <Settings className="h-3.5 w-3.5" />
-                    <span>Fill Mode</span>
-                  </button>
-                </div>
-                <div className="ribbon-column">
                   <div className="relative">
-                    <button className={`rbtn-small ${activeRibbonAction === 'constant' ? 'active' : ''}`} onClick={() => setActiveRibbonAction(activeRibbonAction === 'constant' ? '' : 'constant')} disabled={!selectedColumn}>
-                      <Settings className="h-3.5 w-3.5" />
-                      <span>Fill Constant</span>
+                    <button 
+                      ref={fillBtnRef}
+                      className={`rbtn-small ${isFillDropdownOpen ? 'active' : ''}`}
+                      onClick={() => setIsFillDropdownOpen(!isFillDropdownOpen)}
+                      disabled={!selectedColumn}
+                    >
+                      <Sparkles className="h-3.5 w-3.5 text-indigo-400" />
+                      <span>Fill NaN with</span>
+                      <ChevronDown className="h-3 w-3 opacity-60" />
                     </button>
-                    {activeRibbonAction === 'constant' && (
-                      <div className="absolute left-0 mt-1.5 w-48 bg-zinc-950 border border-zinc-850 rounded-lg p-2.5 shadow-2xl space-y-2.5 z-50">
-                        <h4 className="text-[10px] font-bold text-zinc-400 uppercase font-mono">Constant Value</h4>
-                        <input
-                          type="text"
-                          value={fillValue}
-                          onChange={(e) => setFillValue(e.target.value)}
-                          placeholder="Value..."
-                          className="w-full bg-zinc-900 border border-zinc-800 text-zinc-250 text-xs rounded p-1.5 focus:outline-none font-mono"
-                        />
-                        <button onClick={() => handleFillNull('constant', fillValue)} className="w-full py-1 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded">Fill</button>
+                    {isFillDropdownOpen && fillDropdownCoords && (
+                      <div 
+                        ref={fillDropdownRef}
+                        style={{
+                          position: 'fixed',
+                          left: `${fillDropdownCoords.x}px`,
+                          top: `${fillDropdownCoords.y}px`,
+                        }}
+                        className="z-[9999] w-60 bg-zinc-950 border border-zinc-850 rounded-xl p-2.5 shadow-[0_10px_30px_rgba(0,0,0,0.5)] flex flex-col gap-1 text-left font-mono"
+                      >
+                        <button 
+                          disabled={!isNumericColumn(selectedColumn)}
+                          onClick={() => { handleFillNull('mean'); setIsFillDropdownOpen(false); }}
+                          className={`w-full text-left px-3 py-1.5 text-xs font-mono rounded flex items-center justify-between transition-colors ${
+                            isNumericColumn(selectedColumn)
+                              ? 'text-zinc-350 hover:bg-indigo-500/10 hover:text-white cursor-pointer'
+                              : 'text-zinc-650 opacity-30 cursor-not-allowed'
+                          }`}
+                        >
+                          <span>Mean (Numeric Only)</span>
+                        </button>
+                        <button 
+                          disabled={!isNumericColumn(selectedColumn)}
+                          onClick={() => { handleFillNull('median'); setIsFillDropdownOpen(false); }}
+                          className={`w-full text-left px-3 py-1.5 text-xs font-mono rounded flex items-center justify-between transition-colors ${
+                            isNumericColumn(selectedColumn)
+                              ? 'text-zinc-350 hover:bg-indigo-500/10 hover:text-white cursor-pointer'
+                              : 'text-zinc-650 opacity-30 cursor-not-allowed'
+                          }`}
+                        >
+                          <span>Median (Numeric Only)</span>
+                        </button>
+                        <button 
+                          onClick={() => { handleFillNull('mode'); setIsFillDropdownOpen(false); }}
+                          className="w-full text-left px-3 py-1.5 text-xs font-mono rounded text-zinc-350 hover:bg-indigo-500/10 hover:text-white cursor-pointer transition-colors"
+                        >
+                          <span>Mode</span>
+                        </button>
+                        <hr className="border-zinc-900 my-1" />
+                        <div className="px-3 py-1 space-y-1.5">
+                          <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block">Constant Value</span>
+                          <div className="flex gap-1.5">
+                            <input 
+                              type="text" 
+                              value={fillValue}
+                              onChange={(e) => setFillValue(e.target.value)}
+                              placeholder="Value..."
+                              className="w-full bg-zinc-900 border border-zinc-800 text-zinc-250 text-xs rounded p-1 px-2 focus:outline-none font-mono"
+                            />
+                            <button 
+                              onClick={() => { 
+                                handleFillNull('constant', fillValue); 
+                                setIsFillDropdownOpen(false); 
+                              }}
+                              className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded cursor-pointer"
+                            >
+                              Fill
+                            </button>
+                          </div>
+                        </div>
+                        <hr className="border-zinc-900 my-1" />
+                        <button 
+                          onClick={() => { handleFfill(); setIsFillDropdownOpen(false); }}
+                          className="w-full text-left px-3 py-1.5 text-xs font-mono rounded text-zinc-350 hover:bg-indigo-500/10 hover:text-white cursor-pointer transition-colors"
+                        >
+                          <span>Forward Fill</span>
+                        </button>
+                        <button 
+                          onClick={() => { handleBfill(); setIsFillDropdownOpen(false); }}
+                          className="w-full text-left px-3 py-1.5 text-xs font-mono rounded text-zinc-350 hover:bg-indigo-500/10 hover:text-white cursor-pointer transition-colors"
+                        >
+                          <span>Backward Fill</span>
+                        </button>
                       </div>
                     )}
                   </div>
-                  <button className="rbtn-small" onClick={handleFfill} disabled={!selectedColumn}>
-                    <ArrowUpDown className="h-3.5 w-3.5" />
-                    <span>Forward Fill</span>
-                  </button>
-                  <button className="rbtn-small" onClick={handleBfill} disabled={!selectedColumn}>
-                    <ArrowUpDown className="h-3.5 w-3.5" />
-                    <span>Backward Fill</span>
-                  </button>
                 </div>
                 <div className="ribbon-column">
                   <div className="relative">
@@ -3069,6 +3373,8 @@ export default function DataLabWorkspace({
               <button
                 className="ribbon-train-btn"
                 onClick={handleOpenLaunchModal}
+                disabled={!session}
+                style={{ opacity: session ? 1 : 0.5, cursor: session ? 'pointer' : 'not-allowed' }}
               >
                 <i className="ti ti-brain"></i> Train Model
               </button>
@@ -4187,11 +4493,311 @@ export default function DataLabWorkspace({
                 setActiveCategory('Home');
                 setActiveRibbonAction('cast');
               }
+            },
+            {
+              label: 'Fill NaN with',
+              icon: Sparkles,
+              submenu: [
+                {
+                  label: 'Fill Mean',
+                  disabled: !isNumericColumn(contextMenu.column),
+                  onClick: () => handleFillNull('mean', null, contextMenu.column)
+                },
+                {
+                  label: 'Fill Median',
+                  disabled: !isNumericColumn(contextMenu.column),
+                  onClick: () => handleFillNull('median', null, contextMenu.column)
+                },
+                {
+                  label: 'Fill Mode',
+                  onClick: () => handleFillNull('mode', null, contextMenu.column)
+                },
+                {
+                  type: 'separator'
+                },
+                {
+                  label: 'Fill Constant...',
+                  onClick: () => {
+                    const val = prompt(`Enter constant value to fill NaNs in "${contextMenu.column}":`);
+                    if (val !== null) {
+                      handleFillNull('constant', val, contextMenu.column);
+                    }
+                  }
+                },
+                {
+                  type: 'separator'
+                },
+                {
+                  label: 'Forward Fill',
+                  onClick: () => handleFfill(contextMenu.column)
+                },
+                {
+                  label: 'Backward Fill',
+                  onClick: () => handleBfill(contextMenu.column)
+                }
+              ]
             }
           ]}
           onClose={() => setContextMenu(null)}
         />
       )}
+
+      {/* CUSTOM RANGE BINNING MODAL */}
+      {isBinningModalOpen && (() => {
+        const isNumeric = binningColumn && dtypes[binningColumn] && (
+          dtypes[binningColumn].toLowerCase().includes('int') || 
+          dtypes[binningColumn].toLowerCase().includes('float') || 
+          dtypes[binningColumn].toLowerCase().includes('double') || 
+          dtypes[binningColumn].toLowerCase().includes('num')
+        );
+
+        return (
+          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-zinc-950 border border-zinc-900 rounded-2xl max-w-xl w-full max-h-[90vh] overflow-hidden flex flex-col shadow-2xl relative animate-in fade-in zoom-in-95 duration-200 text-left font-sans text-zinc-200">
+              
+              {/* Modal Header */}
+              <div className="p-5 border-b border-zinc-900 flex items-center justify-between flex-shrink-0">
+                <div>
+                  <h2 className="text-base font-bold text-white font-mono flex items-center gap-2">
+                    <Grid className="h-5 w-5 text-indigo-400" />
+                    <span>Custom Range Binning</span>
+                  </h2>
+                  <p className="text-xs text-zinc-400 mt-1">
+                    Create custom numeric ranges and map them to categorical labels.
+                  </p>
+                </div>
+                <button 
+                  onClick={() => setIsBinningModalOpen(false)}
+                  className="text-zinc-500 hover:text-white transition-colors cursor-pointer"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <div className="p-5 overflow-y-auto space-y-4 flex-1">
+                
+                {!isNumeric ? (
+                  <div className="p-4 bg-rose-950/20 border border-rose-900/50 rounded-xl text-rose-300 text-xs flex gap-3">
+                    <AlertCircle className="h-5 w-5 text-rose-400 flex-shrink-0 mt-0.5" />
+                    <div className="space-y-1">
+                      <span className="font-bold block text-zinc-200">Numeric Column Required</span>
+                      <p className="text-zinc-400">
+                        Custom range binning requires a numeric column. Column <span className="font-mono text-zinc-200 font-bold">"{binningColumn || 'None'}"</span> has type <span className="font-mono text-zinc-200 font-bold">"{dtypes[binningColumn] || 'unknown'}"</span> which is not supported.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {/* Select Column & Output Name */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-[10px] text-zinc-500 uppercase tracking-wider font-bold mb-1.5">Column to Bin</label>
+                        <div className="w-full bg-zinc-900 border border-zinc-800 text-zinc-300 text-xs rounded-xl p-2.5 font-bold font-mono">
+                          {binningColumn}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-zinc-500 uppercase tracking-wider font-bold mb-1.5">Output Column Name</label>
+                        <input 
+                          type="text" 
+                          value={binningOutputColumn} 
+                          onChange={(e) => setBinningOutputColumn(e.target.value)}
+                          placeholder="e.g. Price_Bin"
+                          className="w-full bg-zinc-900 border border-zinc-800 text-zinc-200 text-xs rounded-xl p-2.5 focus:outline-none focus:border-indigo-500 font-mono"
+                        />
+                      </div>
+                    </div>
+
+                    {/* BINS LIST */}
+                    <div className="space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <label className="block text-[10px] text-zinc-500 uppercase tracking-wider font-bold">Bins Definitions</label>
+                        <span className="text-[10px] text-zinc-500 font-mono">From (incl.) | To (incl.) | Label</span>
+                      </div>
+                      
+                      <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
+                        {binningBins.map((bin, idx) => (
+                          <div key={idx} className="flex items-center gap-2">
+                            <div className="grid grid-cols-3 gap-2 flex-1">
+                              <input 
+                                type="number" 
+                                step="any"
+                                value={bin.from} 
+                                onChange={(e) => handleBinChange(idx, 'from', e.target.value)}
+                                placeholder="Min"
+                                className="bg-zinc-900 border border-zinc-800 text-zinc-200 text-xs rounded-lg p-2 focus:outline-none focus:border-indigo-500 font-mono"
+                              />
+                              <input 
+                                type="number" 
+                                step="any"
+                                value={bin.to} 
+                                onChange={(e) => handleBinChange(idx, 'to', e.target.value)}
+                                placeholder="Max"
+                                className="bg-zinc-900 border border-zinc-800 text-zinc-200 text-xs rounded-lg p-2 focus:outline-none focus:border-indigo-500 font-mono"
+                              />
+                              <input 
+                                type="text" 
+                                value={bin.label} 
+                                onChange={(e) => handleBinChange(idx, 'label', e.target.value)}
+                                placeholder="Label (optional)"
+                                className="bg-zinc-900 border border-zinc-800 text-zinc-200 text-xs rounded-lg p-2 focus:outline-none focus:border-indigo-500 font-mono"
+                              />
+                            </div>
+                            <button 
+                              onClick={() => handleDeleteBin(idx)}
+                              className="text-zinc-500 hover:text-rose-400 p-1.5 transition-colors cursor-pointer"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                      <button 
+                        onClick={handleAddBin}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 rounded-lg text-zinc-300 font-mono text-[10px] transition-colors cursor-pointer"
+                      >
+                        <Plus className="h-3.5 w-3.5 text-indigo-400" />
+                        <span>Add Bin</span>
+                      </button>
+                    </div>
+
+                    <hr className="border-zinc-900" />
+
+                    {/* Label Remaining Values Option */}
+                    <div className="bg-zinc-900/20 border border-zinc-900/40 p-4 rounded-xl space-y-2">
+                      <label className="block text-[10px] text-zinc-500 uppercase tracking-wider font-bold">Label all remaining values as</label>
+                      <input 
+                        type="text" 
+                        value={uncoveredLabel} 
+                        onChange={(e) => setUncoveredLabel(e.target.value)}
+                        placeholder="e.g. Other (leave blank to keep remaining values as NULL)"
+                        className="w-full bg-zinc-900 border border-zinc-800 text-zinc-250 text-xs rounded-xl p-2.5 focus:outline-none focus:border-indigo-500 font-mono"
+                      />
+                    </div>
+
+                    {/* LIVE PREVIEW & COVERAGE STATS */}
+                    {binningColumn && (
+                      <div className="bg-zinc-900/40 border border-zinc-900 p-4 rounded-xl space-y-3 font-mono">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider">Live Preview (Sampled Values)</span>
+                          <span className="text-[10px] text-zinc-400 font-bold">
+                            Coverage: {(() => {
+                              const { assignedPct, uncoveredPct } = calculateCoverageStats();
+                              const defaultLabel = uncoveredLabel.trim();
+                              if (defaultLabel) {
+                                return (
+                                  <span className="text-emerald-400">
+                                    ✓ {assignedPct}% binned | ✓ {uncoveredPct}% binned to {defaultLabel}
+                                  </span>
+                                );
+                              } else {
+                                return (
+                                  <span>
+                                    <span className="text-emerald-400">✓ {assignedPct}% binned</span>
+                                    {parseFloat(uncoveredPct) > 0 && (
+                                      <span className="text-amber-400"> | ⚠ {uncoveredPct}% null</span>
+                                    )}
+                                  </span>
+                                );
+                              }
+                            })()}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-[11px] max-h-24 overflow-y-auto">
+                          {getSampledValues().length === 0 ? (
+                            <div className="col-span-2 text-zinc-500 italic">No non-null values to preview</div>
+                          ) : (
+                            getSampledValues().map((val, i) => (
+                              <div key={i} className="flex justify-between border-b border-zinc-900/40 py-1">
+                                <span className="text-zinc-400">{val}</span>
+                                <span className="text-indigo-400 font-bold">{evaluateValue(val)}</span>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ERROR BANNER */}
+                    {binningError && (
+                      <div className="p-3.5 bg-rose-950/20 border border-rose-900/50 rounded-xl text-rose-300 text-xs flex gap-2">
+                        <AlertCircle className="h-4 w-4 text-rose-400 flex-shrink-0 mt-0.5" />
+                        <div>
+                          <span className="font-bold">Validation Error:</span> {binningError}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* GAP WARNING BANNER */}
+                    {binningWarning && (
+                      <div className="p-4 bg-amber-950/20 border border-amber-900/50 rounded-xl text-amber-300 text-xs space-y-3">
+                        <div className="flex gap-2">
+                          <AlertTriangle className="h-4.5 w-4.5 text-amber-400 flex-shrink-0 mt-0.5" />
+                          <div className="space-y-1">
+                            <span className="font-bold block font-sans text-zinc-200">The following ranges are not assigned:</span>
+                            <ul className="list-disc pl-4 space-y-0.5 font-mono text-[11px]">
+                              {binningWarning.gaps.map((g, i) => (
+                                <li key={i}>{g.from}–{g.to}</li>
+                              ))}
+                            </ul>
+                            <p className="mt-2 text-zinc-400">Values within these ranges will become <span className="font-bold text-zinc-300">NULL</span>.</p>
+                          </div>
+                        </div>
+                        <div className="flex flex-col gap-2 pl-6.5">
+                          <div className="text-zinc-400 font-bold text-[10px] uppercase tracking-wider">Would you like to:</div>
+                          <div className="flex gap-3">
+                            <button 
+                              onClick={() => setBinningWarning(null)}
+                              className="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 text-zinc-300 rounded-lg border border-zinc-800 transition-colors font-bold cursor-pointer"
+                            >
+                              • Add another bin
+                            </button>
+                            <button 
+                              onClick={() => {
+                                setUncoveredLabel('Other');
+                                const updatedParsed = binningWarning.parsedBins;
+                                setBinningWarning(null);
+                                submitBinningPipeline(updatedParsed);
+                              }}
+                              className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg transition-colors font-bold cursor-pointer"
+                            >
+                              • Assign them to Other
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-5 border-t border-zinc-900 flex justify-end gap-3 flex-shrink-0">
+                <button 
+                  onClick={() => setIsBinningModalOpen(false)}
+                  className="px-4 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button 
+                  disabled={!isNumeric}
+                  onClick={handleApplyBinning}
+                  className={`px-4 py-2 text-xs font-bold rounded-xl transition-colors shadow-lg cursor-pointer ${
+                    isNumeric 
+                      ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/10' 
+                      : 'bg-zinc-900 text-zinc-600 border border-zinc-850 cursor-not-allowed shadow-none'
+                  }`}
+                >
+                  Apply Binning
+                </button>
+              </div>
+
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -5197,10 +5803,30 @@ plt.tight_layout()`
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <span style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--color-text-muted)' }}>Aggregation:</span>
                   <select value={aggregationMethod} onChange={(e) => setAggregationMethod(e.target.value)} style={{ background: '#ffffff', border: '1px solid #cbd5e1', color: 'var(--color-text-main)', fontSize: '12px', padding: '2px 6px', borderRadius: '4px', outline: 'none', height: '26px', cursor: 'pointer' }}>
-                    <option value="none">None</option>
+                    <option value="none">None (Raw Data)</option>
                     <option value="mean">Mean</option>
+                    <option value="median">Median</option>
                     <option value="sum">Sum</option>
+                    <option value="min">Min</option>
+                    <option value="max">Max</option>
+                    <option value="count">Row Count</option>
                   </select>
+                </div>
+              )}
+              {activeMetadata.options.includes('sorting') && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--color-text-muted)' }}>Sorting:</span>
+                  <select value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} style={{ background: '#ffffff', border: '1px solid #cbd5e1', color: 'var(--color-text-main)', fontSize: '12px', padding: '2px 6px', borderRadius: '4px', outline: 'none', height: '26px', cursor: 'pointer' }}>
+                    <option value="none">None (Default)</option>
+                    <option value="asc">Ascending</option>
+                    <option value="desc">Descending</option>
+                  </select>
+                </div>
+              )}
+              {activeMetadata.options.includes('topN') && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--color-text-muted)' }}>Top N Categories:</span>
+                  <input type="number" min="1" placeholder="All" value={topNCount} onChange={(e) => setTopNCount(e.target.value)} style={{ width: '70px', height: '26px', border: '1px solid #cbd5e1', borderRadius: '4px', padding: '2px 8px', fontSize: '12px', outline: 'none' }} />
                 </div>
               )}
             </div>
@@ -5269,6 +5895,7 @@ plt.tight_layout()`
           </div>
         </div>
       )}
+
     </div>
   );
 }

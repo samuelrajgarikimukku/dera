@@ -7,18 +7,33 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
+# Dependencies and Environments
+node_modules/
+venv/
+.venv/
 *.local
 
-# Editor directories and files
+# Python Build and Packaging Artifacts
+build/
+dist/
+*.egg-info/
+__pycache__/
+*.pyc
+
+# React Build Folders
+backend/dist/
+dist-ssr/
+
+# Editor Directories and Sandbox
 .vscode/*
 !.vscode/extensions.json
-.idea
-.DS_Store
+.idea/
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
+scratch/
+
+# System Files
+.DS_Store

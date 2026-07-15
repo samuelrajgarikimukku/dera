@@ -239,7 +239,7 @@ def handle_split_column(lf, params):
     if max_splits and max_splits > 0:
         exprs = []
         for i in range(max_splits):
-            exprs.append(pl.col(col).cast(pl.String).str.split(delimiter).list.get(i).alias(f"{col}_split_{i+1}"))
+            exprs.append(pl.col(col).cast(pl.String).str.split(delimiter).list.get(i, null_on_oob=True).alias(f"{col}_split_{i+1}"))
         lf = lf.with_columns(exprs)
     return lf
 
@@ -362,7 +362,8 @@ def handle_binary_encode(lf, params):
         num_bits = int(math.ceil(math.log2(max_code + 1)))
         for i in range(num_bits):
             expr = ((pl.col("_code") / (2**i)).floor().cast(pl.Int64) % 2).alias(f"{col}_bin_{i}")
-            lf = lf.with_columns(expr)
+            phys_lf = phys_lf.with_columns(expr)
+        lf = phys_lf.drop(["_code", col])
     return lf
 
 def handle_robust_scale(lf, params):
@@ -589,7 +590,7 @@ def handle_cap_clip(lf, params):
         lower = stats.get_column("lower")[0]
         upper = stats.get_column("upper")[0]
         lf = lf.with_columns(
-            pl.col(col).clip(lower_limit=lower, upper_limit=upper).alias(col)
+            pl.col(col).clip(lower_bound=lower, upper_bound=upper).alias(col)
         )
     return lf
 
@@ -692,8 +693,108 @@ def handle_melt(lf, params):
     return lf
 
 def handle_transpose(lf, params):
-    df = lf.collect().to_pandas().transpose().reset_index()
-    return pl.from_pandas(df).lazy()
+    df = lf.collect().transpose(include_header=True, header_name="index")
+    return df.lazy()
+
+def _handle_custom_binning(lf, params):
+    col = params.get('column')
+    out_col = params.get('outputColumn')
+    bins = params.get('bins', [])
+    default_label = params.get('defaultLabel')
+    
+    if not out_col:
+        out_col = f"{col}_Bin"
+        
+    if col not in lf.columns:
+        raise ValueError(f"Column '{col}' not found in dataset.")
+        
+    parsed_bins = []
+    for idx, b in enumerate(bins):
+        b_from_val = b.get('from')
+        b_to_val = b.get('to')
+        b_label = b.get('label')
+        
+        if b_from_val is None or b_to_val is None:
+            raise ValueError(f"Bin {idx+1} is missing 'from' or 'to' values.")
+            
+        if b_label is None or str(b_label).strip() == '':
+            b_label = f"{b_from_val}–{b_to_val}"
+        else:
+            b_label = str(b_label).strip()
+            
+        try:
+            b_from = float(b_from_val)
+            b_to = float(b_to_val)
+        except ValueError:
+            raise ValueError(f"Bin {idx+1} has non-numeric range values: '{b_from_val}' to '{b_to_val}'.")
+            
+        if b_from > b_to:
+            raise ValueError(f"Invalid range in Bin {idx+1} ({b_label}): 'from' ({b_from}) cannot be greater than 'to' ({b_to}).")
+            
+        from_inc = b.get('from_inclusive', True)
+        to_inc = b.get('to_inclusive', True)
+        
+        parsed_bins.append((b_from, b_to, b_label, from_inc, to_inc))
+        
+    sorted_parsed = sorted(parsed_bins, key=lambda x: x[0])
+    
+    for i in range(1, len(sorted_parsed)):
+        prev_to = sorted_parsed[i-1][1]
+        curr_from = sorted_parsed[i][0]
+        if curr_from <= prev_to:
+            raise ValueError(
+                f"Overlapping ranges detected: Bin '{sorted_parsed[i-1][2]}' ({sorted_parsed[i-1][0]} to {sorted_parsed[i-1][1]}) "
+                f"overlaps with Bin '{sorted_parsed[i][2]}' ({sorted_parsed[i][0]} to {sorted_parsed[i][1]})."
+            )
+            
+    if not sorted_parsed:
+        if default_label is not None:
+            expr = pl.lit(default_label)
+        else:
+            expr = pl.lit(None).cast(pl.String)
+        return lf.with_columns(expr.alias(out_col))
+        
+    main_expr = None
+    for b_from, b_to, b_label, from_inc, to_inc in sorted_parsed:
+        cond_from = pl.col(col) >= b_from if from_inc else pl.col(col) > b_from
+        cond_to = pl.col(col) <= b_to if to_inc else pl.col(col) < b_to
+        cond = cond_from & cond_to
+        
+        if main_expr is None:
+            main_expr = pl.when(cond).then(pl.lit(b_label))
+        else:
+            main_expr = main_expr.when(cond).then(pl.lit(b_label))
+            
+    if main_expr is not None:
+        if default_label is not None:
+            main_expr = main_expr.otherwise(pl.lit(default_label))
+        else:
+            main_expr = main_expr.otherwise(pl.lit(None).cast(pl.String))
+        lf = lf.with_columns(main_expr.alias(out_col))
+        
+    return lf
+
+def _handle_equal_width_binning(lf, params):
+    raise NotImplementedError("Equal Width Binning mode not yet implemented.")
+
+def _handle_equal_frequency_binning(lf, params):
+    raise NotImplementedError("Equal Frequency Binning mode not yet implemented.")
+
+def _handle_quantile_binning(lf, params):
+    raise NotImplementedError("Quantile Binning mode not yet implemented.")
+
+def handle_binning(lf, params):
+    mode = params.get('mode', 'custom')
+    if mode == 'custom':
+        return _handle_custom_binning(lf, params)
+    elif mode == 'equal_width':
+        return _handle_equal_width_binning(lf, params)
+    elif mode == 'equal_frequency':
+        return _handle_equal_frequency_binning(lf, params)
+    elif mode == 'quantile':
+        return _handle_quantile_binning(lf, params)
+    else:
+        raise ValueError(f"Unsupported binning mode: '{mode}'")
 
 TRANSFORMS = {
     'drop_columns': handle_drop_columns,
@@ -752,7 +853,9 @@ TRANSFORMS = {
     'groupby_aggregate': handle_groupby_aggregate,
     'pivot_table': handle_pivot_table,
     'melt': handle_melt,
-    'transpose': handle_transpose
+    'transpose': handle_transpose,
+    'binning': handle_binning,
+    'custom_binning': handle_binning
 }
 
 def load_dataset(path):
