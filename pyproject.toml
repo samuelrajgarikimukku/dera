@@ -18,7 +18,8 @@ dependencies = [
     "uvicorn",
     "polars",
     "python-multipart",
-    "xgboost"
+    "xgboost",
+    "pyarrow"
 ]
 
 [project.scripts]
