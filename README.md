@@ -1,6 +1,10 @@
-<img width="500" height="500" alt="DERA_logo-removebg-preview" src="https://github.com/user-attachments/assets/649a9362-d426-4607-a614-78205e18ef85" />
 
-# Dera
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/8549ff0b-1604-4d2e-8b6f-2eaef297780a" width="150" alt="Dera Logo">
+</p>
+
+
+## Dera
 
 Dera is an open-source, no-code Machine Learning workflow automation engine built to simplify data pipelines and model training.
 
